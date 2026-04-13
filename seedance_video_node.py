@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from .utils import (
     download_video,
     get_output_video_path,
+    get_provider_config,
     pil_to_base64_data_url,
     poll_until_complete,
     tensor_to_pils,
@@ -25,17 +26,11 @@ load_dotenv(dotenv_path=DOTENV_PATH)
 
 LOG_PREFIX = "[ComfyUI-Seedance]"
 
-MODELS = [
-    "doubao-seedance-1-5-pro-251215",
-    "doubao-seedance-1-0-pro-250428",
-    "doubao-seedance-1-0-lite-i2v-250219",
-    "seedance-1-0-lite-i2v-250428",
-    "seedance-1-0-pro-250528",
-    "seedance-1-0-pro-fast-251015",
-    "seedance-1-5-pro-251215",
-]
-RESOLUTIONS = ["480p", "720p", "1080p"]
-RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "adaptive"]
+_cfg = get_provider_config("seedance")
+MODELS = [m["id"] for m in _cfg.get("models", [])] or ["doubao-seedance-1-5-pro-251215"]
+RESOLUTIONS = _cfg.get("resolutions", ["480p", "720p", "1080p"])
+RATIOS = _cfg.get("ratios", ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "adaptive"])
+_defaults = _cfg.get("defaults", {})
 
 POLL_INTERVAL = 5.0
 POLL_TIMEOUT = 300.0
@@ -160,19 +155,19 @@ class SeedanceImageToVideo:
                     "STRING",
                     {"multiline": True, "default": ""},
                 ),
-                "model": (MODELS, {"default": MODELS[0]}),
+                "model": (MODELS, {"default": _defaults.get("model", MODELS[0])}),
             },
             "optional": {
                 "image_tail": ("IMAGE",),
                 "duration": (
                     "INT",
-                    {"default": 5, "min": 3, "max": 12, "step": 1},
+                    {"default": _defaults.get("duration", 5), "min": 3, "max": 12, "step": 1},
                 ),
-                "resolution": (RESOLUTIONS, {"default": "720p"}),
-                "ratio": (RATIOS, {"default": "16:9"}),
+                "resolution": (RESOLUTIONS, {"default": _defaults.get("resolution", "720p")}),
+                "ratio": (RATIOS, {"default": _defaults.get("ratio", "16:9")}),
                 "seed": (
                     "INT",
-                    {"default": -1, "min": -1, "max": 2147483647},
+                    {"default": _defaults.get("seed", -1), "min": -1, "max": 2147483647},
                 ),
             },
         }

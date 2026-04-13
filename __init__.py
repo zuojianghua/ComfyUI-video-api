@@ -29,12 +29,12 @@ if SeedanceImageToVideo is not None:
     NODE_DISPLAY_NAME_MAPPINGS["SeedanceImageToVideo"] = "Seedance Image to Video"
 
 if PreviewVideo is not None:
-    NODE_CLASS_MAPPINGS["PreviewVideo"] = PreviewVideo
-    NODE_DISPLAY_NAME_MAPPINGS["PreviewVideo"] = "Preview Video"
+    NODE_CLASS_MAPPINGS["PreviewVideoFromURL"] = PreviewVideo
+    NODE_DISPLAY_NAME_MAPPINGS["PreviewVideoFromURL"] = "Preview Video (URL)"
 
 if SaveVideo is not None:
-    NODE_CLASS_MAPPINGS["SaveVideo"] = SaveVideo
-    NODE_DISPLAY_NAME_MAPPINGS["SaveVideo"] = "Save Video"
+    NODE_CLASS_MAPPINGS["SaveVideoFromURL"] = SaveVideo
+    NODE_DISPLAY_NAME_MAPPINGS["SaveVideoFromURL"] = "Save Video (URL)"
 
 WEB_DIRECTORY = "./web"
 

@@ -103,7 +103,7 @@ function addVideoPreview(nodeType) {
 app.registerExtension({
   name: "ComfyUI-video-api.PreviewVideo",
   async beforeRegisterNodeDef(nodeType, nodeData) {
-    if (nodeData.name !== "PreviewVideo") return;
+    if (nodeData.name !== "PreviewVideoFromURL") return;
     addVideoPreview(nodeType);
   },
 });

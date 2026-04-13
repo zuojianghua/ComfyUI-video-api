@@ -10,9 +10,11 @@ Provides:
 
 import base64
 import io
+import json
 import os
 import re
 import time
+from pathlib import Path
 from typing import Callable, List, Optional, TypeVar
 
 import numpy as np
@@ -21,6 +23,21 @@ import torch
 from PIL import Image
 
 T = TypeVar("T")
+
+_CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
+_config_cache: Optional[dict] = None
+
+
+def load_config() -> dict:
+    global _config_cache
+    if _config_cache is None:
+        with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
+            _config_cache = json.load(f)
+    return _config_cache
+
+
+def get_provider_config(provider: str) -> dict:
+    return load_config().get(provider, {})
 
 # ---------------------------------------------------------------------------
 # Image conversion

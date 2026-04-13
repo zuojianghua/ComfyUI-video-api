@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from .utils import (
     download_video,
     get_output_video_path,
+    get_provider_config,
     pil_to_base64,
     poll_until_complete,
     tensor_to_pils,
@@ -27,14 +28,12 @@ load_dotenv(dotenv_path=DOTENV_PATH)
 
 LOG_PREFIX = "[ComfyUI-Kling]"
 
-MODELS = [
-    "kling-v2-6",
-    "kling-v2-6-pro",
-    "kling-v3",
-]
-MODES = ["std", "pro"]
-DURATIONS = ["5", "10"]
-ASPECT_RATIOS = ["16:9", "9:16", "1:1"]
+_cfg = get_provider_config("kling")
+MODELS = [m["id"] for m in _cfg.get("models", [])] or ["kling-v2-6"]
+MODES = _cfg.get("modes", ["std", "pro"])
+DURATIONS = _cfg.get("durations", ["5", "10"])
+ASPECT_RATIOS = _cfg.get("aspect_ratios", ["16:9", "9:16", "1:1"])
+_defaults = _cfg.get("defaults", {})
 
 POLL_INTERVAL = 5.0
 POLL_TIMEOUT = 300.0
@@ -155,9 +154,9 @@ class KlingImageToVideo:
                     "STRING",
                     {"multiline": True, "default": ""},
                 ),
-                "model_name": (MODELS, {"default": MODELS[0]}),
-                "mode": (MODES, {"default": "pro"}),
-                "duration": (DURATIONS, {"default": "5"}),
+                "model_name": (MODELS, {"default": _defaults.get("model_name", MODELS[0])}),
+                "mode": (MODES, {"default": _defaults.get("mode", "pro")}),
+                "duration": (DURATIONS, {"default": _defaults.get("duration", "5")}),
             },
             "optional": {
                 "image_tail": ("IMAGE",),
@@ -167,9 +166,9 @@ class KlingImageToVideo:
                 ),
                 "cfg_scale": (
                     "FLOAT",
-                    {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05},
+                    {"default": _defaults.get("cfg_scale", 0.5), "min": 0.0, "max": 1.0, "step": 0.05},
                 ),
-                "aspect_ratio": (ASPECT_RATIOS, {"default": "16:9"}),
+                "aspect_ratio": (ASPECT_RATIOS, {"default": _defaults.get("aspect_ratio", "16:9")}),
             },
         }
 

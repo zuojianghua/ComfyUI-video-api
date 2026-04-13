@@ -85,11 +85,11 @@ class SaveVideo:
 
 
 NODE_CLASS_MAPPINGS = {
-    "PreviewVideo": PreviewVideo,
-    "SaveVideo": SaveVideo,
+    "PreviewVideoFromURL": PreviewVideo,
+    "SaveVideoFromURL": SaveVideo,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "PreviewVideo": "Preview Video",
-    "SaveVideo": "Save Video",
+    "PreviewVideoFromURL": "Preview Video (URL)",
+    "SaveVideoFromURL": "Save Video (URL)",
 }
