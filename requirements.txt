@@ -1,0 +1,5 @@
+# ComfyUI-video-api Plugin Dependencies
+requests>=2.28.0
+PyJWT>=2.0.0
+python-dotenv>=1.0.0
+pillow>=9.0.0

@@ -1,0 +1,35 @@
+{
+  "kling": {
+    "models": [
+      {"id": "kling-v2-6", "name": "Kling V2.6"},
+      {"id": "kling-v2-6-pro", "name": "Kling V2.6 Pro"},
+      {"id": "kling-v3", "name": "Kling V3"}
+    ],
+    "modes": ["std", "pro"],
+    "durations": ["5", "10"],
+    "aspect_ratios": ["16:9", "9:16", "1:1"],
+    "defaults": {
+      "model_name": "kling-v2-6",
+      "mode": "pro",
+      "duration": "5",
+      "cfg_scale": 0.5,
+      "aspect_ratio": "16:9"
+    }
+  },
+  "seedance": {
+    "models": [
+      {"id": "seedance-1-0-lite-i2v-250428", "name": "Seedance 1.0 Lite I2V"},
+      {"id": "seedance-1-0-pro-250528", "name": "Seedance 1.0 Pro"},
+      {"id": "seedance-1-5-pro-251215", "name": "Seedance 1.5 Pro"}
+    ],
+    "resolutions": ["480p", "720p", "1080p"],
+    "ratios": ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "adaptive"],
+    "defaults": {
+      "model": "seedance-1-0-pro-250528",
+      "duration": 5,
+      "resolution": "720p",
+      "ratio": "16:9",
+      "seed": -1
+    }
+  }
+}
