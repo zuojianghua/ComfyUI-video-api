@@ -165,6 +165,10 @@ class KlingImageToVideo:
                     "FLOAT",
                     {"default": _defaults.get("cfg_scale", 0.5), "min": 0.0, "max": 1.0, "step": 0.05},
                 ),
+                "seed": (
+                    "INT",
+                    {"default": _defaults.get("seed", -1), "min": -1, "max": 2147483647},
+                ),
             },
         }
 
@@ -178,6 +182,7 @@ class KlingImageToVideo:
         image_tail: Optional[torch.Tensor] = None,
         negative_prompt: str = "",
         cfg_scale: float = 0.5,
+        seed: int = -1,
     ) -> Tuple[str, str, str]:
         access_key = _env("KLING_ACCESS_KEY")
         secret_key = _env("KLING_SECRET_KEY")

@@ -10,7 +10,8 @@
       "model_name": "kling-v2-6",
       "mode": "pro",
       "duration": "5",
-      "cfg_scale": 0.5
+      "cfg_scale": 0.5,
+      "seed": -1
     }
   },
   "seedance": {
