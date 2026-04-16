@@ -130,6 +130,35 @@ def download_video(url: str, save_path: str, timeout: int = 120) -> str:
 # ---------------------------------------------------------------------------
 
 
+def make_video_ui_result(file_path: str) -> dict:
+    """Build the ``ui`` dict so a saved video appears in ComfyUI history.
+
+    Returns the same format as built-in ``SaveImage`` / ``PreviewVideo``::
+
+        {"images": [{"filename": ..., "subfolder": ..., "type": "output"}],
+         "animated": (True,)}
+
+    Note: the key is ``"images"`` (not ``"videos"``) — this is a ComfyUI
+    convention that applies to all visual media including video.
+    """
+    try:
+        import folder_paths  # type: ignore[import-untyped]
+
+        output_dir = folder_paths.get_output_directory()
+    except Exception:
+        output_dir = os.path.join(os.path.dirname(__file__), "output")
+
+    abs_path = os.path.abspath(file_path)
+    rel = os.path.relpath(abs_path, output_dir)
+    subfolder = os.path.dirname(rel)
+    filename = os.path.basename(rel)
+
+    return {
+        "images": [{"filename": filename, "subfolder": subfolder, "type": "output"}],
+        "animated": (True,),
+    }
+
+
 def get_output_video_path(prefix: str = "video", ext: str = ".mp4") -> str:
     """Generate a unique file path under ComfyUI's output directory.
 

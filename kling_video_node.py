@@ -18,6 +18,7 @@ from .utils import (
     download_video,
     get_output_video_path,
     get_provider_config,
+    make_video_ui_result,
     pil_to_base64,
     poll_until_complete,
     tensor_to_pils,
@@ -231,7 +232,10 @@ class KlingImageToVideo:
             print(f"{LOG_PREFIX} Video ready but download failed: {e}")
             return (video_url, "", f"{LOG_PREFIX} Video ready but download failed: {e}")
 
-        return (video_url, file_path, "Video generated successfully")
+        return {
+            "ui": make_video_ui_result(file_path),
+            "result": (video_url, file_path, "Video generated successfully"),
+        }
 
 
 NODE_CLASS_MAPPINGS = {
