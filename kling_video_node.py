@@ -36,7 +36,8 @@ DURATIONS = _cfg.get("durations", ["5", "10"])
 _defaults = _cfg.get("defaults", {})
 
 POLL_INTERVAL = 5.0
-POLL_TIMEOUT = 300.0
+# 增加等待时长
+POLL_TIMEOUT = 3600.0
 
 
 def _env(key: str) -> Optional[str]:
