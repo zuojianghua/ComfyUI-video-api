@@ -34,7 +34,8 @@ RATIOS = _cfg.get("ratios", ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "adapt
 _defaults = _cfg.get("defaults", {})
 
 POLL_INTERVAL = 5.0
-POLL_TIMEOUT = 300.0
+# 增加等待时长
+POLL_TIMEOUT = 3600.0
 
 
 def _env(key: str) -> Optional[str]:
