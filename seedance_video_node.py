@@ -12,6 +12,7 @@ import requests
 import torch
 from dotenv import load_dotenv
 
+from .jizhu_reporting import begin_video, report_video_completed, report_video_failed
 from .utils import (
     download_video,
     get_output_video_path,
@@ -203,6 +204,14 @@ class SeedanceImageToVideo:
 
         content = _build_content(prompt, first_frame_b64, last_frame_b64)
 
+        jizhu_client, execution, error = begin_video(
+            model=model,
+            provider="seedance",
+            duration=duration,
+        )
+        if error:
+            return ("", "", f"{LOG_PREFIX} Error: {error}")
+
         try:
             task_id = _create_task(
                 base_url=base_url,
@@ -216,6 +225,9 @@ class SeedanceImageToVideo:
             )
             video_url = _poll_task(base_url, api_key, task_id)
         except Exception as e:
+            report_video_failed(
+                jizhu_client, execution, model, "seedance", duration
+            )
             print(f"{LOG_PREFIX} Error: {e}")
             return ("", "", f"{LOG_PREFIX} Error: {e}")
 
@@ -223,8 +235,24 @@ class SeedanceImageToVideo:
         try:
             download_video(video_url, file_path)
         except Exception as e:
+            report_video_failed(
+                jizhu_client, execution, model, "seedance", duration
+            )
             print(f"{LOG_PREFIX} Video ready but download failed: {e}")
             return (video_url, "", f"{LOG_PREFIX} Video ready but download failed: {e}")
+
+        try:
+            report_video_completed(
+                jizhu_client,
+                execution,
+                model,
+                "seedance",
+                duration,
+                file_path,
+            )
+        except Exception as e:
+            print(f"{LOG_PREFIX} Result reporting failed: {e}")
+            return (video_url, "", f"{LOG_PREFIX} Result reporting failed: {e}")
 
         return {
             "ui": make_video_ui_result(file_path),
