@@ -1,20 +1,27 @@
 """Kling (可灵) Image-to-Video node for ComfyUI.
 
-Integrates with Kuaishou Kling API to generate video from a single image
-or first+last frame pair.  Authentication uses JWT (HS256).
+使用可灵新版 API（kling-2.6 / kling-3.0）：Bearer API Key 鉴权，支持首帧图生视频与
+首尾帧图生视频。协议细节与能力校验见 kling_api.py。
 """
 
 import os
-import time
 from pathlib import Path
 from typing import Optional, Tuple
 
-import jwt
 import requests
 import torch
 from dotenv import load_dotenv
 
 from .jizhu_reporting import begin_video, report_video_completed, report_video_failed
+from .kling_api import (
+    DEFAULT_BASE_URL,
+    MODEL_RULES,
+    build_image_to_video_request,
+    check_image_size,
+    extract_video_url,
+    parse_create_response,
+    parse_task_item,
+)
 from .utils import (
     download_video,
     get_output_video_path,
@@ -31,109 +38,74 @@ load_dotenv(dotenv_path=DOTENV_PATH)
 LOG_PREFIX = "[ComfyUI-Kling]"
 
 _cfg = get_provider_config("kling")
-MODELS = [m["id"] for m in _cfg.get("models", [])] or ["kling-v2-6"]
-MODES = _cfg.get("modes", ["std", "pro"])
-DURATIONS = _cfg.get("durations", ["5", "10"])
+MODELS = [m["id"] for m in _cfg.get("models", [])] or list(MODEL_RULES)
+# 下拉框是各模型能力的并集，具体组合在提交前按所选模型校验（如 2.6 仅 5/10 秒、无 4k）
+RESOLUTIONS = _cfg.get("resolutions", ["720p", "1080p", "4k"])
+DURATIONS = _cfg.get("durations", [str(d) for d in range(3, 16)])
 _defaults = _cfg.get("defaults", {})
+
+_RESOLUTION_ORDER = ["720p", "1080p", "4k"]
+#: 下发给前端 web/js/klingOptions.js：切换模型时把「时长 / 清晰度」下拉收敛到该模型支持的值
+KLING_UI_RULES = {
+    model: {
+        "durations": [str(d) for d in sorted(MODEL_RULES[model]["durations"])],
+        "resolutions": [r for r in _RESOLUTION_ORDER if r in MODEL_RULES[model]["resolutions"]],
+    }
+    for model in MODELS
+    if model in MODEL_RULES
+}
 
 POLL_INTERVAL = 5.0
 # 增加等待时长
 POLL_TIMEOUT = 3600.0
 
 
-def _env(key: str) -> Optional[str]:
-    return os.getenv(key) or None
-
-
-def _generate_jwt(access_key: str, secret_key: str, expire: int = 1800) -> str:
-    now = int(time.time())
-    payload = {
-        "iss": access_key,
-        "exp": now + expire,
-        "nbf": now - 5,
-    }
-    return jwt.encode(payload, secret_key, algorithm="HS256", headers={"typ": "JWT"})
-
-
-def _headers(token: str) -> dict:
+def _headers(api_key: str) -> dict:
     return {
-        "Authorization": f"Bearer {token}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
 
 
-def _create_task(
-    base_url: str,
-    token: str,
-    image_b64: str,
-    prompt: str,
-    model_name: str,
-    mode: str,
-    duration: str,
-    negative_prompt: str = "",
-    cfg_scale: float = 0.5,
-    image_tail_b64: Optional[str] = None,
-) -> str:
-    body: dict = {
-        "model_name": model_name,
-        "image": image_b64,
-        "prompt": prompt,
-        "mode": mode,
-        "duration": duration,
-        "cfg_scale": cfg_scale,
-    }
-    if negative_prompt:
-        body["negative_prompt"] = negative_prompt
-    if image_tail_b64:
-        body["image_tail"] = image_tail_b64
-
-    url = f"{base_url.rstrip('/')}/videos/image2video"
-    print(f"{LOG_PREFIX} Creating task: model={model_name} mode={mode} duration={duration}s")
-    resp = requests.post(url, json=body, headers=_headers(token), timeout=60)
-
-    if resp.status_code != 200:
-        try:
-            err_body = resp.json()
-        except Exception:
-            err_body = resp.text
-        raise RuntimeError(
-            f"{LOG_PREFIX} HTTP {resp.status_code}: {err_body}"
-        )
-
-    data = resp.json()
-    if data.get("code") != 0:
-        raise RuntimeError(f"{LOG_PREFIX} API error: {data.get('message', data)}")
-
-    task_id = data["data"]["task_id"]
+def _create_task(base_url: str, api_key: str, path: str, body: dict) -> str:
+    print(f"{LOG_PREFIX} Creating task: {path} settings={body['settings']}")
+    resp = requests.post(f"{base_url}{path}", json=body, headers=_headers(api_key), timeout=60)
+    try:
+        data = resp.json()
+    except Exception:
+        data = None
+    task_id = parse_create_response(resp.status_code, data)
     print(f"{LOG_PREFIX} Task created: {task_id}")
     return task_id
 
 
-def _poll_task(base_url: str, token: str, task_id: str) -> str:
-    url = f"{base_url.rstrip('/')}/videos/image2video/{task_id}"
-
+def _poll_task(base_url: str, api_key: str, task_id: str) -> str:
     def _fetch() -> dict:
-        r = requests.get(url, headers=_headers(token), timeout=30)
+        r = requests.get(
+            f"{base_url}/tasks",
+            params={"task_ids": task_id},
+            headers=_headers(api_key),
+            timeout=30,
+        )
         r.raise_for_status()
-        body = r.json()
-        if body.get("code") != 0:
-            raise RuntimeError(f"{LOG_PREFIX} Poll error: {body.get('message', body)}")
-        return body["data"]
+        return parse_task_item(r.json(), task_id)
 
     result = poll_until_complete(
         poll_fn=_fetch,
-        is_done=lambda d: d.get("task_status") == "succeed",
-        is_failed=lambda d: d.get("task_status") == "failed",
-        extract_error=lambda d: d.get("task_status_msg", "unknown"),
+        is_done=lambda d: d.get("status") == "succeeded",
+        is_failed=lambda d: d.get("status") == "failed",
+        extract_error=lambda d: d.get("message") or "unknown",
         interval=POLL_INTERVAL,
         timeout=POLL_TIMEOUT,
         log_prefix=LOG_PREFIX,
     )
+    return extract_video_url(result)
 
-    videos = result.get("task_result", {}).get("videos", [])
-    if not videos:
-        raise RuntimeError(f"{LOG_PREFIX} No videos in result")
-    return videos[0]["url"]
+
+def _image_to_base64(image: torch.Tensor, label: str) -> str:
+    pil = tensor_to_pils(image)[0]
+    check_image_size(pil.width, pil.height, label)
+    return pil_to_base64(pil)
 
 
 class KlingImageToVideo:
@@ -154,20 +126,17 @@ class KlingImageToVideo:
                     "STRING",
                     {"multiline": True, "default": ""},
                 ),
-                "model_name": (MODELS, {"default": _defaults.get("model_name", MODELS[0])}),
-                "mode": (MODES, {"default": _defaults.get("mode", "pro")}),
+                "model_name": (
+                    MODELS,
+                    {"default": _defaults.get("model_name", MODELS[0]), "kling_rules": KLING_UI_RULES},
+                ),
+                "resolution": (RESOLUTIONS, {"default": _defaults.get("resolution", "1080p")}),
                 "duration": (DURATIONS, {"default": _defaults.get("duration", "5")}),
+                "audio": ("BOOLEAN", {"default": _defaults.get("audio", False)}),
             },
             "optional": {
                 "image_tail": ("IMAGE",),
-                "negative_prompt": (
-                    "STRING",
-                    {"multiline": True, "default": ""},
-                ),
-                "cfg_scale": (
-                    "FLOAT",
-                    {"default": _defaults.get("cfg_scale", 0.5), "min": 0.0, "max": 1.0, "step": 0.05},
-                ),
+                # 新版接口无 seed 参数；保留该输入用于改值后强制重新执行节点
                 "seed": (
                     "INT",
                     {"default": _defaults.get("seed", -1), "min": -1, "max": 2147483647},
@@ -180,71 +149,52 @@ class KlingImageToVideo:
         image: torch.Tensor,
         prompt: str,
         model_name: str,
-        mode: str,
+        resolution: str,
         duration: str,
+        audio: bool,
         image_tail: Optional[torch.Tensor] = None,
-        negative_prompt: str = "",
-        cfg_scale: float = 0.5,
         seed: int = -1,
     ) -> Tuple[str, str, str]:
-        access_key = _env("KLING_ACCESS_KEY")
-        secret_key = _env("KLING_SECRET_KEY")
-        base_url = _env("KLING_BASE_URL")
-        if not access_key or not secret_key:
-            return ("", "", f"{LOG_PREFIX} Error: KLING_ACCESS_KEY / KLING_SECRET_KEY not set in .env")
-        if not base_url:
-            base_url = "https://api-beijing.klingai.com/v1"
+        # 校验不通过、可灵拒绝或任务失败都直接抛出：ComfyUI 会把节点标红并弹窗显示原因，
+        # 而不是只写进未连接的 status 输出、让用户以为什么都没发生。
+        api_key = os.getenv("KLING_API_KEY")
+        if not api_key:
+            raise RuntimeError(f"{LOG_PREFIX} 未配置 KLING_API_KEY（节点目录 .env）")
+        base_url = (os.getenv("KLING_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
 
-        try:
-            token = _generate_jwt(access_key, secret_key)
-        except Exception as e:
-            print(f"{LOG_PREFIX} JWT generation failed: {e}")
-            return ("", "", f"{LOG_PREFIX} JWT generation failed: {e}")
-
-        start_pil = tensor_to_pils(image)[0]
-        image_b64 = pil_to_base64(start_pil)
-
-        image_tail_b64: Optional[str] = None
-        if image_tail is not None:
-            tail_pil = tensor_to_pils(image_tail)[0]
-            image_tail_b64 = pil_to_base64(tail_pil)
-
+        first_frame = _image_to_base64(image, "首帧")
+        last_frame = _image_to_base64(image_tail, "尾帧") if image_tail is not None else None
+        path, body = build_image_to_video_request(
+            model=model_name,
+            prompt=prompt,
+            first_frame=first_frame,
+            last_frame=last_frame,
+            resolution=resolution,
+            duration=int(duration),
+            audio=audio,
+        )
+        # 参数与图片校验通过后再校验机杼额度，避免无效参数占用额度校验
         jizhu_client, execution, error = begin_video(
             model=model_name,
             provider="kling",
             duration=duration,
         )
         if error:
-            return ("", "", f"{LOG_PREFIX} Error: {error}")
+            raise RuntimeError(f"{LOG_PREFIX} {error}")
 
         try:
-            task_id = _create_task(
-                base_url=base_url,
-                token=token,
-                image_b64=image_b64,
-                prompt=prompt,
-                model_name=model_name,
-                mode=mode,
-                duration=duration,
-                negative_prompt=negative_prompt,
-                cfg_scale=cfg_scale,
-                image_tail_b64=image_tail_b64,
-            )
-            video_url = _poll_task(base_url, token, task_id)
-        except Exception as e:
-            report_video_failed(
-                jizhu_client, execution, model_name, "kling", duration
-            )
-            print(f"{LOG_PREFIX} Error: {e}")
-            return ("", "", f"{LOG_PREFIX} Error: {e}")
+            task_id = _create_task(base_url, api_key, path, body)
+            video_url = _poll_task(base_url, api_key, task_id)
+        except Exception:
+            report_video_failed(jizhu_client, execution, model_name, "kling", duration)
+            raise
 
+        # 视频已生成但下载失败：仍返回链接，避免丢失已扣费的结果
         file_path = get_output_video_path(prefix="kling")
         try:
             download_video(video_url, file_path)
         except Exception as e:
-            report_video_failed(
-                jizhu_client, execution, model_name, "kling", duration
-            )
+            report_video_failed(jizhu_client, execution, model_name, "kling", duration)
             print(f"{LOG_PREFIX} Video ready but download failed: {e}")
             return (video_url, "", f"{LOG_PREFIX} Video ready but download failed: {e}")
 
